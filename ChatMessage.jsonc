@@ -1,0 +1,86 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+Deno.serve(async (req) => {
+  const base44 = createClientFromRequest(req);
+
+  // Verify admin or scheduled call (no user = scheduled automation)
+  let user = null;
+  try { user = await base44.auth.me(); } catch (_) {}
+  if (user && user.role !== 'admin') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Get tomorrow's date in YYYY-MM-DD format
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+  // Fetch events scheduled for tomorrow
+  const events = await base44.asServiceRole.entities.Event.filter({ date: tomorrowStr });
+
+  if (events.length === 0) {
+    return Response.json({ message: 'No events tomorrow. No emails sent.', date: tomorrowStr });
+  }
+
+  // Fetch all parents (users with role "user")
+  const parents = await base44.asServiceRole.entities.User.filter({ role: 'user' });
+
+  if (parents.length === 0) {
+    return Response.json({ message: 'No parent users found. No emails sent.', events_found: events.length });
+  }
+
+  const results = [];
+
+  for (const event of events) {
+    const timeInfo = event.start_time
+      ? `${event.start_time}${event.end_time ? ` – ${event.end_time}` : ''}`
+      : 'Time TBD';
+
+    const locationInfo = event.location ? `\n📍 Location: ${event.location}` : '';
+    const descriptionInfo = event.description ? `\n\n${event.description}` : '';
+
+    const formattedDate = new Date(event.date + 'T00:00:00').toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    for (const parent of parents) {
+      if (!parent.email) continue;
+
+      const subject = `Reminder: "${event.title}" is tomorrow`;
+
+      const body = `Dear ${parent.full_name || 'Parent/Guardian'},
+
+This is a friendly reminder that the following school event is scheduled for tomorrow:
+
+🗓 ${event.title}
+📅 Date: ${formattedDate}
+🕐 Time: ${timeInfo}${locationInfo}${descriptionInfo}
+
+Please make sure you're prepared and arrive on time.
+
+If you have any questions, please contact the school office:
+📞 +1-800-EDU-SCHOOL
+📧 admin@edufeedback.edu
+
+Best regards,
+EduFeedback School Team`;
+
+      await base44.asServiceRole.integrations.Core.SendEmail({
+        to: parent.email,
+        subject,
+        body,
+        from_name: 'EduFeedback School',
+      });
+
+      results.push({ event: event.title, parent: parent.email, status: 'sent' });
+    }
+  }
+
+  return Response.json({
+    success: true,
+    date_checked: tomorrowStr,
+    events_found: events.length,
+    emails_sent: results.length,
+    results,
+  });
+});

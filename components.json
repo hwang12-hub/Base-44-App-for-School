@@ -1,0 +1,110 @@
+import React from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, XCircle, Clock, ImageIcon } from "lucide-react";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
+
+export default function ModerationQueue() {
+  const queryClient = useQueryClient();
+
+  const { data: pending = [], isLoading } = useQuery({
+    queryKey: ["posts-pending"],
+    queryFn: () => base44.entities.Post.filter({ status: "pending" }, "-created_date"),
+  });
+
+  const moderateMutation = useMutation({
+    mutationFn: ({ id, status }) => base44.entities.Post.update(id, { status }),
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["posts-pending"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast.success(status === "approved" ? "Post approved!" : "Post rejected.");
+    },
+    onError: () => toast.error("Action failed. Please try again."),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-10">
+        <div className="w-7 h-7 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-10">
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-xl font-semibold">Moderation Queue</h2>
+        <Badge variant={pending.length > 0 ? "destructive" : "secondary"} className="gap-1">
+          <Clock className="w-3 h-3" />
+          {pending.length} pending
+        </Badge>
+      </div>
+
+      {pending.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl py-10 text-center text-muted-foreground">
+          <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm font-medium">All caught up!</p>
+          <p className="text-xs mt-1">No posts waiting for review.</p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <AnimatePresence>
+            {pending.map((post) => (
+              <motion.div
+                key={post.id}
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                layout
+              >
+                <Card className="overflow-hidden border-amber-200 bg-amber-50/30">
+                  <div className="relative">
+                    {post.file_type === "video" ? (
+                      <video src={post.file_url} controls className="w-full max-h-56 object-cover bg-black" />
+                    ) : (
+                      <img src={post.file_url} alt="pending post" className="w-full max-h-56 object-cover" />
+                    )}
+                    <Badge className="absolute top-2 left-2 bg-amber-500 text-white border-0">
+                      <Clock className="w-3 h-3 mr-1" /> Pending Review
+                    </Badge>
+                  </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{post.parent_name || "Anonymous"}</span>
+                      <span className="text-xs text-muted-foreground">{format(new Date(post.created_date), "MMM d, yyyy")}</span>
+                    </div>
+                    {post.caption && <p className="text-sm text-muted-foreground mb-3">{post.caption}</p>}
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        className="flex-1 gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => moderateMutation.mutate({ id: post.id, status: "approved" })}
+                        disabled={moderateMutation.isPending}
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="flex-1 gap-1.5"
+                        onClick={() => moderateMutation.mutate({ id: post.id, status: "rejected" })}
+                        disabled={moderateMutation.isPending}
+                      >
+                        <XCircle className="w-4 h-4" /> Reject
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}

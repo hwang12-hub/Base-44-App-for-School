@@ -1,0 +1,40 @@
+{
+  "name": "Post",
+  "type": "object",
+  "properties": {
+    "parent_name": {
+      "type": "string",
+      "description": "Name of the parent"
+    },
+    "caption": {
+      "type": "string",
+      "description": "Caption or description for the post"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL of the uploaded image or video"
+    },
+    "file_type": {
+      "type": "string",
+      "enum": [
+        "image",
+        "video"
+      ],
+      "description": "Type of the uploaded file"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Moderation status of the post"
+    }
+  },
+  "required": [
+    "file_url",
+    "file_type"
+  ]
+}

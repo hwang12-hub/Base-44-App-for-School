@@ -1,0 +1,16 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+Deno.serve(async (req) => {
+  const base44 = createClientFromRequest(req);
+  const payload = await req.json();
+
+  const { data } = payload;
+  if (!data?.id) return Response.json({ skipped: true });
+
+  await base44.asServiceRole.functions.invoke('notifyEventSubscribers', {
+    event_id: data.id,
+    trigger_type: 'announcement',
+  });
+
+  return Response.json({ ok: true, announcement_id: data.id });
+});
